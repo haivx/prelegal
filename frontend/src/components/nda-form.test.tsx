@@ -43,7 +43,7 @@ describe("NdaForm", () => {
     expect(screen.getByLabelText(/governing law/i)).toBeRequired();
     expect(screen.getByLabelText(/^jurisdiction$/i)).toBeRequired();
     expect(
-      screen.getByPlaceholderText(/list any modifications/i)
+      screen.getByLabelText(/^mnda modifications$/i)
     ).not.toBeRequired();
   });
 

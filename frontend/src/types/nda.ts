@@ -16,7 +16,13 @@ export interface NdaFormData {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Build the date from local parts rather than `toISOString()`, which
+  // converts to UTC first and would show tomorrow's date to anyone west of
+  // UTC during evening/night local hours.
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 export function createDefaultNdaFormData(): NdaFormData {

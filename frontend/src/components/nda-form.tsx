@@ -112,6 +112,7 @@ export function NdaForm({ data, onChange }: NdaFormProps) {
                 className="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm"
                 type="number"
                 min={1}
+                aria-label="Number of years the MNDA runs for"
                 disabled={data.mndaTermType !== "expires"}
                 value={data.mndaTermYears}
                 onChange={(e) =>
@@ -150,6 +151,7 @@ export function NdaForm({ data, onChange }: NdaFormProps) {
                 className="w-16 rounded-md border border-slate-300 px-2 py-1 text-sm"
                 type="number"
                 min={1}
+                aria-label="Number of years Confidential Information is protected for"
                 disabled={data.confidentialityTermType !== "years"}
                 value={data.confidentialityTermYears}
                 onChange={(e) =>
@@ -216,7 +218,11 @@ export function NdaForm({ data, onChange }: NdaFormProps) {
           MNDA Modifications{" "}
           <span className="font-normal text-slate-500">(optional)</span>
         </legend>
+        <label className="sr-only" htmlFor="modifications">
+          MNDA Modifications
+        </label>
         <textarea
+          id="modifications"
           className={inputClasses}
           rows={3}
           placeholder="List any modifications to the MNDA"

@@ -82,7 +82,9 @@ describe("NdaDocument", () => {
     const cells = container.querySelectorAll("table td");
     expect(cells.length).toBeGreaterThan(0);
     cells.forEach((cell) => {
-      expect(cell.textContent).toBe(" ");
+      // The cells render a literal &nbsp; (U+00A0), not a plain space, so
+      // they stay visibly present in the generated PDF/table borders.
+      expect(cell.textContent).toBe("\u00A0");
     });
 
     // The parties' names should not have leaked into the signature table.
