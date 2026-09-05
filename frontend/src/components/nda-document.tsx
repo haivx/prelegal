@@ -53,7 +53,7 @@ export function NdaDocument({ data, ref }: NdaDocumentProps) {
   return (
     <div
       ref={ref}
-      className="mx-auto max-w-3xl space-y-6 bg-white p-8 text-sm leading-relaxed text-slate-800 print:p-0"
+      className="pdf-color-safe mx-auto max-w-3xl space-y-6 bg-white p-8 text-sm leading-relaxed text-slate-800 print:p-0"
     >
       <header className="break-inside-avoid space-y-1 text-center">
         <h1 className="text-xl font-bold text-slate-900">

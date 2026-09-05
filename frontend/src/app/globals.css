@@ -24,3 +24,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/*
+ * html2pdf.js (via html2canvas) can't parse the `lab()` colors Tailwind v4
+ * substitutes in on wide-gamut (P3) displays, which silently breaks the NDA
+ * preview's "Download PDF" button on those screens. Pin the NDA document
+ * subtree to plain sRGB hex colors (Tailwind's own fallback values) so the
+ * canvas snapshot html2pdf.js takes always has colors it can parse.
+ */
+.pdf-color-safe {
+  --color-white: #fff;
+  --color-slate-50: #f8fafc;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cad5e2;
+  --color-slate-500: #62748e;
+  --color-slate-600: #45556c;
+  --color-slate-700: #314158;
+  --color-slate-800: #1d293d;
+  --color-slate-900: #0f172b;
+}

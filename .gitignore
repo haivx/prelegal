@@ -76,6 +76,10 @@ logs/
 
 # Testing
 coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
 
 # ---- Editors / OS ----
 .vscode/

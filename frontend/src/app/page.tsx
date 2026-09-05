@@ -4,15 +4,8 @@ import { useRef, useState } from "react";
 import { NdaForm } from "@/components/nda-form";
 import { NdaDocument } from "@/components/nda-document";
 import { downloadElementAsPdf } from "@/lib/download-pdf";
+import { slugifyForFilename } from "@/lib/filename";
 import { createDefaultNdaFormData, type NdaFormData } from "@/types/nda";
-
-function slugifyForFilename(value: string, fallback: string): string {
-  const slug = value
-    .trim()
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || fallback;
-}
 
 export default function Home() {
   const [data, setData] = useState<NdaFormData>(createDefaultNdaFormData());
