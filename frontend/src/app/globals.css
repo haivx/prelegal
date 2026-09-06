@@ -27,10 +27,11 @@ body {
 
 /*
  * html2pdf.js (via html2canvas) can't parse the `lab()` colors Tailwind v4
- * substitutes in on wide-gamut (P3) displays, which silently breaks the NDA
- * preview's "Download PDF" button on those screens. Pin the NDA document
- * subtree to plain sRGB hex colors (Tailwind's own fallback values) so the
- * canvas snapshot html2pdf.js takes always has colors it can parse.
+ * substitutes in on wide-gamut (P3) displays, which silently breaks the
+ * document preview's "Download PDF" button on those screens. Pin the
+ * document subtree to plain sRGB hex colors (Tailwind's own fallback
+ * values) so the canvas snapshot html2pdf.js takes always has colors it
+ * can parse.
  */
 .pdf-color-safe {
   --color-white: #fff;
@@ -42,4 +43,71 @@ body {
   --color-slate-700: #314158;
   --color-slate-800: #1d293d;
   --color-slate-900: #0f172b;
+}
+
+/*
+ * The document preview renders a Common Paper template's markdown as HTML
+ * (see lib/render-document.ts). Tailwind's preflight strips list/heading
+ * styling, so restore just what the templates use, scoped to the preview.
+ */
+.doc-preview .doc-body :is(h1, h2, h3) {
+  font-weight: 700;
+  color: #0f172b;
+  margin: 1rem 0 0.5rem;
+}
+.doc-preview .doc-body h1 {
+  font-size: 1.125rem;
+}
+.doc-preview .doc-body h2,
+.doc-preview .doc-body span.header_2 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172b;
+}
+.doc-preview .doc-body span.header_3 {
+  font-weight: 600;
+  color: #0f172b;
+}
+.doc-preview .doc-body ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+}
+.doc-preview .doc-body ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+}
+.doc-preview .doc-body li {
+  margin: 0.375rem 0;
+}
+.doc-preview .doc-body li > ol,
+.doc-preview .doc-body li > ul {
+  margin-top: 0.375rem;
+}
+.doc-preview .doc-body p {
+  margin: 0.5rem 0;
+}
+.doc-preview .doc-body a {
+  color: #45556c;
+  text-decoration: underline;
+}
+.doc-preview .doc-body table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.75rem;
+}
+.doc-preview .doc-body :is(td, th) {
+  border: 1px solid #cad5e2;
+  padding: 0.375rem;
+  text-align: left;
+}
+.doc-preview .doc-fill {
+  background: #fdecc4;
+  color: #0f172b;
+  font-weight: 600;
+  padding: 0 0.15rem;
+  border-radius: 2px;
+}
+.doc-preview .doc-blank {
+  color: #888888;
+  font-style: italic;
 }

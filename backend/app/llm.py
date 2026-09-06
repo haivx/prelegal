@@ -1,88 +1,63 @@
-"""AI chat that drives the Mutual NDA (PREL-5).
+"""AI chat that guides a user through drafting a legal agreement (PREL-5, PREL-6).
 
 A single structured LLM call per turn does three jobs at once: it produces
-the assistant's next chat message, extracts every NDA field it can from the
+the assistant's next chat message, tracks which catalog document the
+conversation has settled on, extracts every fill-in value it can from the
 conversation so far, and reports whether enough is known to generate the
 document. The call goes through LiteLLM -> OpenRouter -> ``gpt-oss-120b``
 with Cerebras as the inference provider (see project CLAUDE.md).
-
-Field names on the wire are the camelCase keys the frontend already uses
-for its ``NdaFormData`` (parties, term, governing law, ...), so the browser
-can merge ``fields`` straight into its form state.
 """
 
 from __future__ import annotations
 
-from typing import Literal
+import json
 
 from litellm import completion
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+from app.catalog import CatalogEntry, DocumentTemplate
 from app.config import get_settings
 
 MODEL = "openrouter/openai/gpt-oss-120b"
 # Route the request to Cerebras specifically (project requirement).
 EXTRA_BODY = {"provider": {"order": ["cerebras"]}}
 
-# Fields that must be known before the NDA can be downloaded. Kept in sync
-# with the frontend's isReadyToDownload() check.
-REQUIRED_FIELDS = (
-    "partyOneName",
-    "partyTwoName",
-    "purpose",
-    "effectiveDate",
-    "governingLaw",
-    "jurisdiction",
-)
+_BASE_PROMPT = """\
+You are an assistant that helps a user draft a legal agreement by talking \
+them through it. The user cannot see a form.
 
-SYSTEM_PROMPT = """\
-You are an assistant that helps a user fill out a Common Paper Mutual \
-Non-Disclosure Agreement (MNDA) through conversation. The user cannot see a \
-form - talk them through it.
+You can only generate the documents in the catalog below. Work in two phases:
 
-Guidelines:
-- Ask about one thing at a time, in plain, friendly language. Do not dump \
-the whole list of fields at once.
-- Only the Mutual NDA is available. If the user asks for another document, \
-say so and steer back.
-- After each user message, put everything you can infer into `fields`. \
-Leave anything still unknown as null - never invent names, dates, or places.
-- `effectiveDate` must be an ISO date (YYYY-MM-DD). If the user says \
-"today", resolve it. `mndaTermType` is "expires" or "perpetual"; \
-`confidentialityTermType` is "years" or "perpetuity". The `*Years` fields \
-are integers and only matter for the "expires"/"years" cases.
-- `modifications` is optional free text for changes to the standard terms; \
-leave it null unless the user asks for one.
-- Set `readyToDownload` to true once partyOneName, partyTwoName, purpose, \
-effectiveDate, governingLaw and jurisdiction are all filled in. When it \
-first becomes true, tell the user they can download the PDF.
-- `reply` is your next message to the user. Keep it short.
+1. Pick the document. If the user has not made it clear which agreement \
+they want, ask - and list the catalog options by name as concrete choices. \
+If the user asks for something that is not in the catalog (say, an \
+employment contract or an MSA), tell them plainly that you cannot generate \
+that one, then recommend the closest catalog document by purpose and ask if \
+that works. Once it is settled, set `documentId` to that catalog id.
+
+2. Fill it in. Guide the user through the document's core fields - the \
+parties, any dates, the governing law and jurisdiction, and the single most \
+important commercial term for that kind of agreement. Ask about one thing at \
+a time, in plain language, and ALWAYS end your message with a specific \
+follow-on question while any core field is still unknown. Give a concrete \
+example in each question (e.g. 'like "Delaware"' or 'e.g. "courts located \
+in New Castle, DE"'). Put everything you learn into `fields` as \
+{label, value} pairs, using the field labels exactly as given. Never invent \
+values - leave a field out until the user provides it. Non-core placeholders \
+can be left for the user to fill in later.
+
+Set `readyToDownload` to true once a document is chosen and its core fields \
+are filled; when it first becomes true, tell the user they can download the \
+document. Keep `reply` short.
 """
 
 
-class NdaFields(BaseModel):
-    """Every NDA value the model has captured so far; unknowns are null.
+class FieldValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    Attribute names mirror the frontend's ``NdaFormData`` via a camelCase
-    alias so the JSON on the wire matches the browser's form state.
-    """
-
-    model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="forbid"
-    )
-
-    party_one_name: str | None
-    party_two_name: str | None
-    purpose: str | None
-    effective_date: str | None
-    mnda_term_type: Literal["expires", "perpetual"] | None
-    mnda_term_years: int | None
-    confidentiality_term_type: Literal["years", "perpetuity"] | None
-    confidentiality_term_years: int | None
-    governing_law: str | None
-    jurisdiction: str | None
-    modifications: str | None
+    label: str
+    value: str
 
 
 class ChatReply(BaseModel):
@@ -93,7 +68,10 @@ class ChatReply(BaseModel):
     )
 
     reply: str = Field(description="The assistant's next message to the user.")
-    fields: NdaFields
+    document_id: str | None = Field(
+        description="Catalog id of the chosen document, or null if undecided."
+    )
+    fields: list[FieldValue]
     ready_to_download: bool
 
 
@@ -101,23 +79,48 @@ class LlmError(RuntimeError):
     """The chat model could not be reached or returned something unusable."""
 
 
+def _build_system_prompt(
+    catalog: list[CatalogEntry],
+    selected: DocumentTemplate | None,
+    current_fields: list[FieldValue],
+) -> str:
+    lines = [_BASE_PROMPT, "", "Catalog:"]
+    lines += [f"- {e.id} - {e.name}: {e.description}" for e in catalog]
+
+    if selected is not None:
+        known = json.dumps([f.model_dump() for f in current_fields])
+        field_list = ", ".join(selected.fields) or "(this template has no fill-ins)"
+        lines += [
+            "",
+            f"The user has chosen: {selected.name} (id: {selected.id}).",
+            f"Fill-in fields for this document: {field_list}",
+            f"Values captured so far: {known}",
+        ]
+    else:
+        lines += ["", "No document has been chosen yet."]
+
+    return "\n".join(lines)
+
+
 def run_chat(
-    messages: list[dict[str, str]], current_fields: NdaFields
+    messages: list[dict[str, str]],
+    catalog: list[CatalogEntry],
+    selected: DocumentTemplate | None,
+    current_fields: list[FieldValue],
 ) -> ChatReply:
-    """Run one chat turn and return the assistant reply plus extracted fields.
+    """Run one chat turn.
 
     ``messages`` is the running user/assistant transcript (no system prompt).
-    ``current_fields`` is what the frontend has captured so far, passed back
-    so the model does not re-ask for things it already knows.
+    ``selected`` is the already-resolved template for the conversation's
+    current ``documentId`` (or None), and ``current_fields`` is what the
+    frontend has captured so far.
     """
     api_key = get_settings().openrouter_api_key
     if not api_key:
         raise LlmError("OPENROUTER_API_KEY is not set")
 
-    known = current_fields.model_dump_json(by_alias=True)
     convo = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "system", "content": f"Fields captured so far: {known}"},
+        {"role": "system", "content": _build_system_prompt(catalog, selected, current_fields)},
         *messages,
     ]
 

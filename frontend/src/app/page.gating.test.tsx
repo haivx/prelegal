@@ -14,11 +14,15 @@ const replace = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ useAuth: () => mockAuth }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
-
-// The NDA creator pulls in html2pdf.js via a dynamic import on submit; it is
-// never triggered here but keep it out of the module graph to be safe.
+// Keep html2pdf.js and the network out of the module graph for this test.
 vi.mock("@/lib/download-pdf", () => ({ downloadElementAsPdf: vi.fn() }));
 vi.mock("@/lib/chat", () => ({ sendChat: vi.fn() }));
+vi.mock("@/lib/documents", () => ({
+  fetchDocuments: vi.fn().mockResolvedValue([
+    { id: "mutual-nda", name: "Mutual NDA", description: "…" },
+  ]),
+  fetchDocument: vi.fn(),
+}));
 
 beforeEach(() => {
   mockAuth.status = "loading";
@@ -52,7 +56,7 @@ describe("HomePage auth gate", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the platform (and account bar) once authenticated", () => {
+  it("renders the platform (and account bar) once authenticated", async () => {
     mockAuth.status = "authenticated";
     mockAuth.user = {
       id: 1,
@@ -62,7 +66,7 @@ describe("HomePage auth gate", () => {
     render(<HomePage />);
 
     expect(
-      screen.getByLabelText(/message the assistant/i)
+      await screen.findByLabelText(/message the assistant/i)
     ).toBeInTheDocument();
     expect(screen.getByText("founder@acmecorp.com")).toBeInTheDocument();
     expect(

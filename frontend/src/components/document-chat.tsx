@@ -2,23 +2,44 @@
 
 import { useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { sendChat, type ChatMessage } from "@/lib/chat";
-import type { NdaFieldsPatch, NdaFormData } from "@/types/nda";
+import { sendChat, type ChatMessage, type ChatReply } from "@/lib/chat";
+import type { CatalogDocument, FieldValue } from "@/types/document";
 
-interface NdaChatProps {
-  /** Current form data, sent with each turn so the AI has full context. */
-  data: NdaFormData;
-  /** Called with the fields the AI extracted from the latest turn. */
-  onFieldsPatch: (patch: NdaFieldsPatch) => void;
+interface DocumentChatProps {
+  /** Catalog used to build the opening message; may be empty if it failed to load. */
+  catalog: CatalogDocument[];
+  /** Catalog id settled on so far, sent with each turn. */
+  documentId: string | null;
+  /** Fill-in values captured so far, sent with each turn. */
+  fields: FieldValue[];
+  /** Called with the assistant's structured reply after each turn. */
+  onReply: (reply: ChatReply) => void;
 }
 
-const GREETING =
-  "Hi! I'll help you put together a Common Paper Mutual NDA. To start, " +
-  "who are the two companies entering into this agreement?";
+function buildGreeting(catalog: CatalogDocument[]): string {
+  if (catalog.length === 0) {
+    return (
+      "Hi! I can help you draft a legal agreement. What kind of document do " +
+      "you need?"
+    );
+  }
+  const list = catalog.map((doc) => `• ${doc.name}`).join("\n");
+  return (
+    "Hi! I can help you draft any of these agreements:\n\n" +
+    list +
+    "\n\nWhich one do you need? If you're after something else, tell me and " +
+    "I'll point you to the closest one we can generate."
+  );
+}
 
-export function NdaChat({ data, onFieldsPatch }: NdaChatProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: GREETING },
+export function DocumentChat({
+  catalog,
+  documentId,
+  fields,
+  onReply,
+}: DocumentChatProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [
+    { role: "assistant", content: buildGreeting(catalog) },
   ]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -26,7 +47,6 @@ export function NdaChat({ data, onFieldsPatch }: NdaChatProps) {
   const logRef = useRef<HTMLDivElement>(null);
 
   function scrollToLatest() {
-    // Defer until the new message has been painted.
     requestAnimationFrame(() => {
       const log = logRef.current;
       if (log) log.scrollTop = log.scrollHeight;
@@ -48,12 +68,12 @@ export function NdaChat({ data, onFieldsPatch }: NdaChatProps) {
     scrollToLatest();
 
     try {
-      const result = await sendChat(history, data);
+      const result = await sendChat(history, { documentId, fields });
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: result.reply },
       ]);
-      onFieldsPatch(result.fields);
+      onReply(result);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -78,7 +98,7 @@ export function NdaChat({ data, onFieldsPatch }: NdaChatProps) {
       <div
         ref={logRef}
         role="log"
-        aria-label="Conversation with the NDA assistant"
+        aria-label="Conversation with the drafting assistant"
         aria-live="polite"
         className="flex-1 space-y-3 overflow-y-auto pr-1"
       >

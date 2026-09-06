@@ -5,7 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import get_settings
 from app.database import reset_database
-from app.routers import auth, chat
+from app.routers import auth, chat, documents
 from app.static import mount_frontend
 
 
@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(chat.router)
+    app.include_router(documents.router)
     # Catch-all static handler - must be registered last.
     mount_frontend(app)
     return app
