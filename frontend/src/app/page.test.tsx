@@ -3,55 +3,95 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { NdaCreator } from "./page";
 import * as downloadPdf from "@/lib/download-pdf";
+import { sendChat } from "@/lib/chat";
 
 vi.mock("@/lib/download-pdf", () => ({
   downloadElementAsPdf: vi.fn(),
 }));
+vi.mock("@/lib/chat", () => ({ sendChat: vi.fn() }));
 
 const downloadElementAsPdfMock = vi.mocked(downloadPdf.downloadElementAsPdf);
+const sendChatMock = vi.mocked(sendChat);
 
 afterEach(() => {
   downloadElementAsPdfMock.mockReset();
+  sendChatMock.mockReset();
 });
 
-/**
- * The download button is a native `type="submit"` inside a `<form>`, so the
- * browser blocks submission (and `handleSubmit` never runs) until every
- * `required` field has a value. Fill them in before exercising the submit
- * flow in tests below.
- */
-async function fillRequiredFields(user: UserEvent) {
-  await user.type(screen.getByLabelText(/party 1 name/i), "Acme, Inc.");
-  await user.type(screen.getByLabelText(/party 2 name/i), "Beta LLC");
-  await user.type(screen.getByLabelText(/governing law/i), "Delaware");
+const ALL_REQUIRED_FIELDS = {
+  partyOneName: "Acme, Inc.",
+  partyTwoName: "Beta LLC",
+  purpose: "Evaluating a potential business relationship",
+  effectiveDate: "2026-09-06",
+  governingLaw: "Delaware",
+  jurisdiction: "courts located in New Castle, DE",
+};
+
+/** Simulate one chat turn whose reply carries the given extracted fields.
+ * Each turn gets a unique reply string so assertions can target it even
+ * after several turns. */
+let turnCount = 0;
+
+async function chatTurn(
+  user: UserEvent,
+  fields: Record<string, unknown>,
+  { ready = false }: { ready?: boolean } = {}
+) {
+  const reply = `Assistant reply #${++turnCount}`;
+  sendChatMock.mockResolvedValueOnce({ reply, fields, readyToDownload: ready });
   await user.type(
-    screen.getByLabelText(/^jurisdiction$/i),
-    "courts located in New Castle, DE"
+    screen.getByLabelText(/message the assistant/i),
+    "here are the details"
   );
+  await user.click(screen.getByRole("button", { name: /send/i }));
+  await screen.findByText(reply);
 }
 
-describe("Home page", () => {
-  it("updates the live preview as the form is filled in", async () => {
+describe("NdaCreator", () => {
+  it("updates the live preview as the chat extracts fields", async () => {
     const user = userEvent.setup();
     render(<NdaCreator />);
 
     expect(screen.getByText("[Party 1]")).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/party 1 name/i), "Acme, Inc.");
+    await chatTurn(user, { partyOneName: "Acme, Inc." });
 
     expect(screen.queryByText("[Party 1]")).not.toBeInTheDocument();
     expect(screen.getByText("Acme, Inc.")).toBeInTheDocument();
   });
 
-  it("downloads a PDF named after both parties when the form is submitted", async () => {
+  it("keeps the download button disabled until every required field is filled", async () => {
+    const user = userEvent.setup();
+    render(<NdaCreator />);
+
+    const button = screen.getByRole("button", { name: /download pdf/i });
+    expect(button).toBeDisabled();
+    expect(
+      screen.getByText(/still needs the parties, purpose, effective date/i)
+    ).toBeInTheDocument();
+
+    // A partial turn is still not enough.
+    await chatTurn(user, { partyOneName: "Acme, Inc.", partyTwoName: "Beta LLC" });
+    expect(button).toBeDisabled();
+
+    await chatTurn(user, ALL_REQUIRED_FIELDS, { ready: true });
+    expect(button).toBeEnabled();
+    expect(
+      screen.queryByText(/still needs the parties/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it("downloads a PDF named after both parties once the fields are in", async () => {
     downloadElementAsPdfMock.mockResolvedValueOnce(undefined);
     const user = userEvent.setup();
     render(<NdaCreator />);
 
-    await fillRequiredFields(user);
+    await chatTurn(user, ALL_REQUIRED_FIELDS, { ready: true });
     await user.click(screen.getByRole("button", { name: /download pdf/i }));
 
-    await waitFor(() => expect(downloadElementAsPdfMock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(downloadElementAsPdfMock).toHaveBeenCalledTimes(1)
+    );
     const [, filename] = downloadElementAsPdfMock.mock.calls[0];
     expect(filename).toBe("Mutual-NDA-Acme-Inc-Beta-LLC.pdf");
   });
@@ -61,7 +101,7 @@ describe("Home page", () => {
     const user = userEvent.setup();
     render(<NdaCreator />);
 
-    await fillRequiredFields(user);
+    await chatTurn(user, ALL_REQUIRED_FIELDS, { ready: true });
     const button = screen.getByRole("button", { name: /download pdf/i });
     await user.click(button);
 
@@ -83,11 +123,13 @@ describe("Home page", () => {
     const user = userEvent.setup();
     render(<NdaCreator />);
 
-    await fillRequiredFields(user);
+    await chatTurn(user, ALL_REQUIRED_FIELDS, { ready: true });
     const button = screen.getByRole("button", { name: /download pdf/i });
     await user.click(button);
 
-    expect(await screen.findByRole("button", { name: /preparing pdf/i })).toBeDisabled();
+    expect(
+      await screen.findByRole("button", { name: /preparing pdf/i })
+    ).toBeDisabled();
 
     resolveDownload();
     await waitFor(() =>
