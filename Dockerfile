@@ -34,6 +34,10 @@ COPY backend/ ./
 # The default config resolves the frontend to ../frontend/out relative to
 # the backend directory, i.e. /app/frontend/out.
 COPY --from=frontend /app/frontend/out /app/frontend/out
+# Legal-agreement templates + catalog (PREL-6). The default config resolves
+# these to ../templates and ../catalog.json relative to the backend dir.
+COPY templates /app/templates
+COPY catalog.json /app/catalog.json
 
 EXPOSE 8000
 

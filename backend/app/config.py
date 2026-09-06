@@ -27,6 +27,22 @@ class Settings(BaseSettings):
     # is unavailable and returns a 502.
     openrouter_api_key: str = ""
 
+    # Legal-agreement templates and their catalog (PREL-6). Defaults sit at
+    # the repo root; the Docker image copies them to /app so these resolve
+    # unchanged. Relative paths are resolved against the backend directory.
+    templates_dir: Path = BACKEND_DIR.parent / "templates"
+    catalog_path: Path = BACKEND_DIR.parent / "catalog.json"
+
+    def resolved_templates_dir(self) -> Path:
+        return self.templates_dir if self.templates_dir.is_absolute() else (
+            BACKEND_DIR / self.templates_dir
+        ).resolve()
+
+    def resolved_catalog_path(self) -> Path:
+        return self.catalog_path if self.catalog_path.is_absolute() else (
+            BACKEND_DIR / self.catalog_path
+        ).resolve()
+
     def resolved_database_url(self) -> str:
         prefix = "sqlite:///"
         if self.database_url.startswith(prefix):

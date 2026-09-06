@@ -6,20 +6,6 @@ import app.llm as llm
 
 GOOD_USER = {"email": "founder@acmecorp.com", "password": "correct horse battery"}
 
-EMPTY_FIELDS = {
-    "partyOneName": None,
-    "partyTwoName": None,
-    "purpose": None,
-    "effectiveDate": None,
-    "mndaTermType": None,
-    "mndaTermYears": None,
-    "confidentialityTermType": None,
-    "confidentialityTermYears": None,
-    "governingLaw": None,
-    "jurisdiction": None,
-    "modifications": None,
-}
-
 
 class _FakeResponse:
     """Mimics the shape of a litellm completion response."""
@@ -30,12 +16,12 @@ class _FakeResponse:
         self.choices = [choice]
 
 
-def _reply_json(**overrides) -> str:
-    fields = {**EMPTY_FIELDS, **overrides.pop("fields", {})}
+def _reply_json(*, reply="What document do you need?", document_id=None, fields=None, ready=False):
     payload = {
-        "reply": overrides.pop("reply", "Who are the two parties?"),
-        "fields": fields,
-        "readyToDownload": overrides.pop("ready", False),
+        "reply": reply,
+        "documentId": document_id,
+        "fields": fields or [],
+        "readyToDownload": ready,
     }
     return json.dumps(payload)
 
@@ -59,82 +45,95 @@ def signed_in(client):
 
 def _post_chat(client, **body):
     body.setdefault("messages", [{"role": "user", "content": "hi"}])
-    body.setdefault("fields", EMPTY_FIELDS)
     return client.post("/api/chat", json=body)
 
 
-def test_chat_returns_reply_and_extracted_fields(signed_in, with_key, monkeypatch):
+def test_chat_returns_reply_document_and_fields(signed_in, with_key, monkeypatch):
     captured = {}
 
     def fake_completion(**kwargs):
         captured.update(kwargs)
         return _FakeResponse(
             _reply_json(
-                reply="Got it - what's the purpose?",
-                fields={"partyOneName": "Acme, Inc.", "partyTwoName": "Beta LLC"},
+                reply="Great - what's the purpose?",
+                document_id="mutual-nda",
+                fields=[{"label": "Purpose", "value": "Evaluating a deal"}],
             )
         )
 
     monkeypatch.setattr(llm, "completion", fake_completion)
 
     r = _post_chat(
-        signed_in,
-        messages=[{"role": "user", "content": "Acme and Beta"}],
+        signed_in, messages=[{"role": "user", "content": "I need an NDA"}]
     )
 
     assert r.status_code == 200
     body = r.json()
-    assert body["reply"] == "Got it - what's the purpose?"
-    assert body["fields"]["partyOneName"] == "Acme, Inc."
-    assert body["fields"]["partyTwoName"] == "Beta LLC"
-    assert body["fields"]["jurisdiction"] is None
+    assert body["reply"] == "Great - what's the purpose?"
+    assert body["documentId"] == "mutual-nda"
+    assert body["fields"] == [{"label": "Purpose", "value": "Evaluating a deal"}]
     assert body["readyToDownload"] is False
 
-    # The model is asked for the Cerebras-routed gpt-oss model with a schema.
     assert captured["model"] == "openrouter/openai/gpt-oss-120b"
     assert captured["extra_body"] == {"provider": {"order": ["cerebras"]}}
     assert captured["api_key"] == "test-key"
-    assert captured["messages"][0]["role"] == "system"
+    # The system prompt always lists the catalog.
+    system = captured["messages"][0]
+    assert system["role"] == "system"
+    assert "Cloud Service Agreement" in system["content"]
+    assert "mutual-nda -" in system["content"]
 
 
-def test_chat_passes_known_fields_back_to_the_model(signed_in, with_key, monkeypatch):
+def test_chat_includes_chosen_template_fields_in_the_prompt(
+    signed_in, with_key, monkeypatch
+):
     captured = {}
-
-    def fake_completion(**kwargs):
-        captured.update(kwargs)
-        return _FakeResponse(_reply_json())
-
-    monkeypatch.setattr(llm, "completion", fake_completion)
+    monkeypatch.setattr(
+        llm,
+        "completion",
+        lambda **kw: captured.update(kw) or _FakeResponse(_reply_json()),
+    )
 
     _post_chat(
         signed_in,
-        fields={**EMPTY_FIELDS, "partyOneName": "Acme, Inc."},
+        documentId="sla",
+        fields=[{"label": "Target Uptime", "value": "99.9%"}],
     )
 
-    system_blob = " ".join(
-        m["content"] for m in captured["messages"] if m["role"] == "system"
+    system = captured["messages"][0]["content"]
+    assert "Service Level Agreement" in system
+    assert "Target Response Time" in system  # a fill-in label for the SLA
+    assert "99.9%" in system  # values captured so far are echoed back
+
+
+def test_chat_tolerates_unknown_document_id(signed_in, with_key, monkeypatch):
+    monkeypatch.setattr(
+        llm, "completion", lambda **_: _FakeResponse(_reply_json())
     )
-    assert "Acme, Inc." in system_blob
+    r = _post_chat(signed_in, documentId="not-a-real-doc")
+    assert r.status_code == 200
 
 
 def test_chat_reports_ready_to_download(signed_in, with_key, monkeypatch):
-    filled = {
-        "partyOneName": "Acme, Inc.",
-        "partyTwoName": "Beta LLC",
-        "purpose": "Evaluating a deal",
-        "effectiveDate": "2026-09-06",
-        "governingLaw": "Delaware",
-        "jurisdiction": "courts in New Castle, DE",
-    }
     monkeypatch.setattr(
         llm,
         "completion",
         lambda **_: _FakeResponse(
-            _reply_json(reply="You can download it now.", fields=filled, ready=True)
+            _reply_json(
+                reply="You can download it now.",
+                document_id="mutual-nda",
+                fields=[
+                    {"label": "Purpose", "value": "Evaluating a deal"},
+                    {"label": "Effective Date", "value": "2026-09-06"},
+                    {"label": "Governing Law", "value": "Delaware"},
+                    {"label": "Jurisdiction", "value": "New Castle, DE"},
+                ],
+                ready=True,
+            )
         ),
     )
 
-    r = _post_chat(signed_in)
+    r = _post_chat(signed_in, documentId="mutual-nda")
     assert r.status_code == 200
     assert r.json()["readyToDownload"] is True
 
@@ -150,7 +149,6 @@ def test_chat_502_when_api_key_missing(signed_in, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "")
     get_settings.cache_clear()
     try:
-        # completion must never be called without a key.
         monkeypatch.setattr(
             llm,
             "completion",
@@ -168,31 +166,23 @@ def test_chat_502_when_model_call_fails(signed_in, with_key, monkeypatch):
         raise RuntimeError("upstream 500")
 
     monkeypatch.setattr(llm, "completion", boom)
-
-    r = _post_chat(signed_in)
-    assert r.status_code == 502
+    assert _post_chat(signed_in).status_code == 502
 
 
 def test_chat_502_on_malformed_model_output(signed_in, with_key, monkeypatch):
     monkeypatch.setattr(
         llm, "completion", lambda **_: _FakeResponse("not json at all")
     )
-
-    r = _post_chat(signed_in)
-    assert r.status_code == 502
+    assert _post_chat(signed_in).status_code == 502
 
 
 def test_chat_rejects_empty_message_list(signed_in, with_key):
-    r = signed_in.post("/api/chat", json={"messages": [], "fields": EMPTY_FIELDS})
-    assert r.status_code == 422
+    assert signed_in.post("/api/chat", json={"messages": []}).status_code == 422
 
 
 def test_chat_rejects_bad_role(signed_in, with_key):
     r = signed_in.post(
         "/api/chat",
-        json={
-            "messages": [{"role": "system", "content": "hi"}],
-            "fields": EMPTY_FIELDS,
-        },
+        json={"messages": [{"role": "system", "content": "hi"}]},
     )
     assert r.status_code == 422
