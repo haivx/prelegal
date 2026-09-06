@@ -20,30 +20,76 @@ async function signUp(page: Page): Promise<void> {
   await expect(page.getByText(email)).toBeVisible();
 }
 
+const FILLED_FIELDS = {
+  partyOneName: "Acme, Inc.",
+  partyTwoName: "Beta LLC",
+  purpose: "Evaluating a potential business relationship",
+  effectiveDate: "2026-09-06",
+  mndaTermType: "expires",
+  mndaTermYears: 1,
+  confidentialityTermType: "years",
+  confidentialityTermYears: 1,
+  governingLaw: "Delaware",
+  jurisdiction: "courts located in New Castle, DE",
+  modifications: null,
+};
+
+/**
+ * Stub POST /api/chat so the e2e run doesn't need a real OPENROUTER_API_KEY.
+ * `fields` decides how much of the NDA the "AI" has filled in this turn.
+ */
+async function stubChat(
+  page: Page,
+  fields: Record<string, unknown>,
+  readyToDownload: boolean
+): Promise<void> {
+  // Drop any previous stub so the newest one is authoritative (routes are LIFO).
+  await page.unroute("**/api/chat");
+  await page.route("**/api/chat", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        reply: "Thanks — I've noted that down.",
+        fields,
+        readyToDownload,
+      }),
+    });
+  });
+}
+
+async function sendChatMessage(page: Page): Promise<void> {
+  await page.getByLabel("Message the assistant").fill("Here are the details");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText(/noted that down/i).first()).toBeVisible();
+}
+
 test.describe("Mutual NDA Creator", () => {
-  test("fills the form, live-previews the NDA, and downloads a real PDF", async ({
+  test("chats to fill the NDA, live-previews it, and downloads a real PDF", async ({
     page,
   }) => {
     await signUp(page);
 
-    // The preview starts with placeholders before the form is filled in.
+    // Opens on the assistant greeting, with placeholders in the preview.
+    await expect(
+      page.getByText(/help you put together a Common Paper Mutual NDA/i)
+    ).toBeVisible();
     await expect(page.getByText("[Party 1]")).toBeVisible();
 
-    await page.getByLabel("Party 1 name").fill("Acme, Inc.");
-    await page.getByLabel("Party 2 name").fill("Beta LLC");
-    await page.getByLabel("Governing law (state)").fill("Delaware");
-    await page
-      .getByLabel("Jurisdiction")
-      .fill("courts located in New Castle, DE");
+    await stubChat(page, FILLED_FIELDS, true);
+    await sendChatMessage(page);
 
-    // The live preview reflects the form as it's filled in.
+    // The live preview reflects the fields the AI returned.
     await expect(page.getByText("[Party 1]")).toHaveCount(0);
     await expect(
       page.getByText("Between Acme, Inc. and Beta LLC")
     ).toBeVisible();
 
+    const downloadButton = page.getByRole("button", { name: "Download PDF" });
+    await expect(downloadButton).toBeEnabled();
+
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PDF" }).click();
+    await downloadButton.click();
     const download = await downloadPromise;
 
     expect(download.suggestedFilename()).toBe(
@@ -58,34 +104,32 @@ test.describe("Mutual NDA Creator", () => {
     expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect(bytes.byteLength).toBeGreaterThan(5_000);
 
-    // The button returns to its normal, enabled state once the download
-    // has been handed to the browser.
-    await expect(
-      page.getByRole("button", { name: "Download PDF" })
-    ).toBeEnabled();
+    await expect(downloadButton).toBeEnabled();
   });
 
-  test("blocks submission via native validation until required fields are filled", async ({
+  test("keeps the download button disabled until the chat fills the required fields", async ({
     page,
   }) => {
     await signUp(page);
 
-    let downloadFired = false;
-    page.on("download", () => {
-      downloadFired = true;
-    });
+    const downloadButton = page.getByRole("button", { name: "Download PDF" });
+    await expect(downloadButton).toBeDisabled();
 
-    await page.getByRole("button", { name: "Download PDF" }).click();
-    // Give the (unwanted) download a moment to fire before asserting it didn't.
-    await page.waitForTimeout(500);
+    // A turn that only captures the parties is not enough.
+    await stubChat(
+      page,
+      { partyOneName: "Acme, Inc.", partyTwoName: "Beta LLC" },
+      false
+    );
+    await sendChatMessage(page);
+    await expect(page.getByText("Between Acme, Inc. and Beta LLC")).toBeVisible();
+    await expect(downloadButton).toBeDisabled();
 
-    expect(downloadFired).toBe(false);
-    // The first empty required field (Party 1 name) is the one the browser
-    // flags as invalid and blocks submission on.
-    const isValid = await page
-      .getByLabel("Party 1 name")
-      .evaluate((el: HTMLInputElement) => el.validity.valid);
-    expect(isValid).toBe(false);
+    // A later turn completes the required set.
+    await stubChat(page, FILLED_FIELDS, true);
+    await page.getByLabel("Message the assistant").fill("The rest of it");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(downloadButton).toBeEnabled();
   });
 });
 

@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Directory holding the statically exported frontend (Next.js `out/`).
     frontend_dist: Path = BACKEND_DIR.parent / "frontend" / "out"
 
+    # OpenRouter key for the AI chat (PREL-5). Empty means the chat endpoint
+    # is unavailable and returns a 502.
+    openrouter_api_key: str = ""
+
     def resolved_database_url(self) -> str:
         prefix = "sqlite:///"
         if self.database_url.startswith(prefix):

@@ -25,6 +25,44 @@ function todayIso(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+/**
+ * Fields the AI chat must fill in before the NDA is worth downloading. The
+ * term fields are left out because they always carry a sensible default.
+ * Kept in sync with the backend's REQUIRED_FIELDS in `app/llm.py`.
+ */
+export const REQUIRED_FIELDS = [
+  "partyOneName",
+  "partyTwoName",
+  "purpose",
+  "effectiveDate",
+  "governingLaw",
+  "jurisdiction",
+] as const satisfies readonly (keyof NdaFormData)[];
+
+/** True once every required field has a non-blank value. */
+export function isReadyToDownload(data: NdaFormData): boolean {
+  return REQUIRED_FIELDS.every((key) => data[key].trim() !== "");
+}
+
+/**
+ * A partial set of NDA fields as returned by the AI chat: any key may be
+ * absent or `null` to mean "still unknown, leave the current value alone".
+ */
+export type NdaFieldsPatch = Partial<{
+  [K in keyof NdaFormData]: NdaFormData[K] | null;
+}>;
+
+/** Overlay the non-null values from a chat patch onto the current data. */
+export function applyNdaFieldsPatch(
+  data: NdaFormData,
+  patch: NdaFieldsPatch
+): NdaFormData {
+  const filled = Object.entries(patch).filter(
+    ([, value]) => value !== null && value !== undefined
+  );
+  return { ...data, ...Object.fromEntries(filled) } as NdaFormData;
+}
+
 export function createDefaultNdaFormData(): NdaFormData {
   return {
     partyOneName: "",

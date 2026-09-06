@@ -1,13 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { NdaForm } from "@/components/nda-form";
+import { useCallback, useRef, useState } from "react";
+import { NdaChat } from "@/components/nda-chat";
 import { NdaDocument } from "@/components/nda-document";
 import { AccountBar } from "@/components/account-bar";
 import { RequireAuth } from "@/components/require-auth";
 import { downloadElementAsPdf } from "@/lib/download-pdf";
 import { slugifyForFilename } from "@/lib/filename";
-import { createDefaultNdaFormData, type NdaFormData } from "@/types/nda";
+import {
+  applyNdaFieldsPatch,
+  createDefaultNdaFormData,
+  isReadyToDownload,
+  type NdaFieldsPatch,
+  type NdaFormData,
+} from "@/types/nda";
 
 /** The platform, gated behind the login screen. */
 export default function HomePage() {
@@ -25,9 +31,14 @@ export function NdaCreator() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const documentRef = useRef<HTMLDivElement>(null);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!documentRef.current) return;
+  const handleFieldsPatch = useCallback((patch: NdaFieldsPatch) => {
+    setData((current) => applyNdaFieldsPatch(current, patch));
+  }, []);
+
+  const ready = isReadyToDownload(data);
+
+  async function handleDownload() {
+    if (!documentRef.current || !ready) return;
 
     setIsDownloading(true);
     setDownloadError(null);
@@ -54,39 +65,45 @@ export function NdaCreator() {
             Mutual NDA Creator
           </h1>
           <p className="mt-1 text-sm text-slate-600">
-            Fill in the key details below to generate a Common Paper Mutual
+            Chat with the assistant to put together a Common Paper Mutual
             Non-Disclosure Agreement, previewed live and ready to download as
             a PDF.
           </p>
         </div>
       </header>
 
-      <form onSubmit={handleSubmit}>
-        <main className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-6 py-8 lg:grid-cols-2">
-          <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-8 lg:h-fit">
-            <NdaForm data={data} onChange={setData} />
+      <main className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-6 py-8 lg:grid-cols-2">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-8 lg:h-fit">
+          <NdaChat data={data} onFieldsPatch={handleFieldsPatch} />
 
-            <div className="mt-8 border-t border-slate-200 pt-6">
-              <button
-                type="submit"
-                disabled={isDownloading}
-                className="w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isDownloading ? "Preparing PDF…" : "Download PDF"}
-              </button>
-              {downloadError && (
-                <p className="mt-2 text-sm text-red-600">{downloadError}</p>
-              )}
-            </div>
-          </section>
+          <div className="mt-6 border-t border-slate-200 pt-6">
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={isDownloading || !ready}
+              className="w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isDownloading ? "Preparing PDF…" : "Download PDF"}
+            </button>
+            {!ready && (
+              <p className="mt-2 text-xs text-slate-500">
+                The assistant still needs the parties, purpose, effective
+                date, governing law, and jurisdiction before the NDA can be
+                downloaded.
+              </p>
+            )}
+            {downloadError && (
+              <p className="mt-2 text-sm text-red-600">{downloadError}</p>
+            )}
+          </div>
+        </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="max-h-[calc(100vh-8rem)] overflow-y-auto">
-              <NdaDocument data={data} ref={documentRef} />
-            </div>
-          </section>
-        </main>
-      </form>
+        <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="max-h-[calc(100vh-8rem)] overflow-y-auto">
+            <NdaDocument data={data} ref={documentRef} />
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

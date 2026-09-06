@@ -6,6 +6,11 @@ FastAPI service for the Prelegal V1 foundation. It does two things:
    single-page app.
 2. Exposes a small **fake-login** auth API under `/api` backed by a
    throwaway SQLite database that is recreated from scratch on every start.
+3. Exposes `POST /api/chat` (PREL-5): a stateless AI chat turn that returns
+   the assistant's reply plus the Mutual NDA fields extracted from the
+   conversation so far, as Structured Outputs from `gpt-oss-120b` routed
+   through OpenRouter to Cerebras. Needs `OPENROUTER_API_KEY`; without it
+   the endpoint returns a 502 and the rest of the app is unaffected.
 
 There is no real authentication or route protection yet (see PREL-4) - the
 login screen exists only to bring a user "into the platform".
@@ -21,6 +26,8 @@ login screen exists only to bring a user "into the platform".
 | `app/schemas.py` | Request/response models |
 | `app/security.py` | bcrypt password hashing |
 | `app/routers/auth.py` | `/api/auth/*` and `/api/health` |
+| `app/routers/chat.py` | `POST /api/chat` - AI chat turn (PREL-5) |
+| `app/llm.py` | LiteLLM/OpenRouter/Cerebras call + structured schema |
 | `tests/` | pytest suite |
 
 ## Running locally (without Docker)
@@ -45,6 +52,7 @@ placeholder message.
 | `SESSION_SECRET` | dev-only fallback | Key used to sign the session cookie |
 | `DATABASE_URL` | `sqlite:///./data/app.db` | SQLAlchemy URL for the throwaway DB |
 | `FRONTEND_DIST` | `../frontend/out` | Directory of the built static frontend |
+| `OPENROUTER_API_KEY` | _(empty)_ | Enables `POST /api/chat`; empty = 502 |
 
 ## Tests
 

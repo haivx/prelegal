@@ -10,6 +10,9 @@ services:
       # Signs the session cookie. Override in your shell/.env for anything
       # that outlives a local prototype.
       SESSION_SECRET: ${SESSION_SECRET:-prelegal-local-dev-session-secret}
+      # OpenRouter key for the AI chat (PREL-5). Without it the /api/chat
+      # endpoint returns a 502 and the rest of the app still works.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     # Deliberately no volume for the SQLite database: it is recreated empty
     # every time the container starts (PREL-4).
     healthcheck:

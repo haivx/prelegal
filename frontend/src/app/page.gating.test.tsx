@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace }) }));
 // The NDA creator pulls in html2pdf.js via a dynamic import on submit; it is
 // never triggered here but keep it out of the module graph to be safe.
 vi.mock("@/lib/download-pdf", () => ({ downloadElementAsPdf: vi.fn() }));
+vi.mock("@/lib/chat", () => ({ sendChat: vi.fn() }));
 
 beforeEach(() => {
   mockAuth.status = "loading";
@@ -35,7 +36,9 @@ describe("HomePage auth gate", () => {
     render(<HomePage />);
 
     expect(screen.getByRole("status")).toHaveTextContent(/loading/i);
-    expect(screen.queryByLabelText(/party 1 name/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/message the assistant/i)
+    ).not.toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
   });
 
@@ -44,7 +47,9 @@ describe("HomePage auth gate", () => {
     render(<HomePage />);
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
-    expect(screen.queryByLabelText(/party 1 name/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/message the assistant/i)
+    ).not.toBeInTheDocument();
   });
 
   it("renders the platform (and account bar) once authenticated", () => {
@@ -56,7 +61,9 @@ describe("HomePage auth gate", () => {
     };
     render(<HomePage />);
 
-    expect(screen.getByLabelText(/party 1 name/i)).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/message the assistant/i)
+    ).toBeInTheDocument();
     expect(screen.getByText("founder@acmecorp.com")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /sign out/i })
