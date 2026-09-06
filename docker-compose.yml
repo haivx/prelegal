@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prelegal
+    ports:
+      - "8000:8000"
+    environment:
+      # Signs the session cookie. Override in your shell/.env for anything
+      # that outlives a local prototype.
+      SESSION_SECRET: ${SESSION_SECRET:-prelegal-local-dev-session-secret}
+    # Deliberately no volume for the SQLite database: it is recreated empty
+    # every time the container starts (PREL-4).
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

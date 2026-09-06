@@ -1,0 +1,29 @@
+# VCS / tooling
+.git
+.gitignore
+.claude
+
+# Node
+**/node_modules
+frontend/.next
+frontend/out
+frontend/playwright-report
+frontend/test-results
+frontend/blob-report
+
+# Python
+**/__pycache__
+**/*.pyc
+backend/.venv
+backend/.pytest_cache
+backend/data
+**/*.db
+**/*.sqlite3
+
+# Env & editor
+.env
+.env.*
+!.env.example
+.vscode
+.idea
+.DS_Store
