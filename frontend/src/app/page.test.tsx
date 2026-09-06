@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import Home from "./page";
+import { NdaCreator } from "./page";
 import * as downloadPdf from "@/lib/download-pdf";
 
 vi.mock("@/lib/download-pdf", () => ({
@@ -33,7 +33,7 @@ async function fillRequiredFields(user: UserEvent) {
 describe("Home page", () => {
   it("updates the live preview as the form is filled in", async () => {
     const user = userEvent.setup();
-    render(<Home />);
+    render(<NdaCreator />);
 
     expect(screen.getByText("[Party 1]")).toBeInTheDocument();
 
@@ -46,7 +46,7 @@ describe("Home page", () => {
   it("downloads a PDF named after both parties when the form is submitted", async () => {
     downloadElementAsPdfMock.mockResolvedValueOnce(undefined);
     const user = userEvent.setup();
-    render(<Home />);
+    render(<NdaCreator />);
 
     await fillRequiredFields(user);
     await user.click(screen.getByRole("button", { name: /download pdf/i }));
@@ -59,7 +59,7 @@ describe("Home page", () => {
   it("shows an error message and re-enables the button if PDF generation fails", async () => {
     downloadElementAsPdfMock.mockRejectedValueOnce(new Error("canvas failed"));
     const user = userEvent.setup();
-    render(<Home />);
+    render(<NdaCreator />);
 
     await fillRequiredFields(user);
     const button = screen.getByRole("button", { name: /download pdf/i });
@@ -81,7 +81,7 @@ describe("Home page", () => {
         })
     );
     const user = userEvent.setup();
-    render(<Home />);
+    render(<NdaCreator />);
 
     await fillRequiredFields(user);
     const button = screen.getByRole("button", { name: /download pdf/i });

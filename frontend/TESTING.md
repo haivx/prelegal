@@ -8,22 +8,24 @@ things automation doesn't cover well. Run everything from `frontend/`.
 | Layer | Tool | Command | What it covers |
 |---|---|---|---|
 | Unit | Vitest | `npm test` (watch) / `npm run test:run` (CI) | Pure text/formatting helpers in `src/lib` |
-| Component | Vitest + React Testing Library | same as above | `NdaForm`, `NdaDocument`, and the `Home` page's client-side wiring (form → live preview → download call), with `html2pdf.js` mocked out |
-| End-to-end | Playwright | `npm run test:e2e` | A real Chromium browser filling in the form and clicking **Download PDF**, asserting an actual PDF file comes out |
+| Component | Vitest + React Testing Library | same as above | `NdaForm`, `NdaDocument`, the NDA page's client-side wiring (form → live preview → download call) with `html2pdf.js` mocked out, plus the login screen / `AuthProvider` / auth gate |
+| End-to-end | Playwright | `npm run test:e2e` | A real Chromium browser signing up through the fake-login screen, filling in the form, clicking **Download PDF**, and asserting an actual PDF file comes out |
 
 Run all of them, plus type-checking and lint, before opening/updating a PR:
 
 ```bash
 npm run lint
 npm run test:run
-npm run build       # also type-checks
-npm run test:e2e    # builds on `npm run build`'s output via `next start`
+npm run build       # also type-checks; emits the static export to out/
+npm run test:e2e    # serves out/ + the auth API via the backend
 ```
 
-`test:e2e` starts the app with `next start` on port 3100 (see
-`playwright.config.ts`); it expects `npm run build` to have been run first
-(or `reuseExistingServer` will start `next start` against whatever `.next`
-build already exists).
+Since the frontend is a static export (`output: 'export'`) there is no
+`next start`. `test:e2e` starts the **backend** (`uv run uvicorn` on port
+3100, see `playwright.config.ts`), which serves the built `out/` bundle and
+the `/api` auth endpoints from one origin against a throwaway SQLite DB that
+is recreated on startup. It expects `npm run build` to have been run first,
+and `uv` + a synced `backend/.venv` (`cd ../backend && uv sync`).
 
 ### Why the E2E layer exists
 

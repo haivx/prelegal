@@ -3,11 +3,23 @@
 import { useRef, useState } from "react";
 import { NdaForm } from "@/components/nda-form";
 import { NdaDocument } from "@/components/nda-document";
+import { AccountBar } from "@/components/account-bar";
+import { RequireAuth } from "@/components/require-auth";
 import { downloadElementAsPdf } from "@/lib/download-pdf";
 import { slugifyForFilename } from "@/lib/filename";
 import { createDefaultNdaFormData, type NdaFormData } from "@/types/nda";
 
-export default function Home() {
+/** The platform, gated behind the login screen. */
+export default function HomePage() {
+  return (
+    <RequireAuth>
+      <AccountBar />
+      <NdaCreator />
+    </RequireAuth>
+  );
+}
+
+export function NdaCreator() {
   const [data, setData] = useState<NdaFormData>(createDefaultNdaFormData());
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
